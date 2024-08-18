@@ -1,7 +1,7 @@
 from setuptools import setup, find_packages
 
 setup(
-    name='claude-pyrojects',
+    name='claude-pyrojects-cli',
     version='0.1.0',
     description='A tool for uploading and managing projects in Claude.ai',
     long_description=open('README.md').read(),
