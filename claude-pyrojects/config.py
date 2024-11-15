@@ -27,7 +27,7 @@ class ConfigManager:
         if not os.path.exists(self.ignore_file):
             default_content = ('ignore_folders=[".venv", ".idea", ".vscode"]\n'
                                'ignore_file_extensions=["pdf", "jpg", "png", "pyc"]\n'
-                               'ignore_name_includes=["claude_pyrojects"]')
+                               'ignore_name_includes=["claude_pyrojects", ".DS_Store"]')
             with open(self.ignore_file, 'w') as f:
                 f.write(default_content)
             print(f"{self.ignore_file} created with default values.")
