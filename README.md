@@ -81,3 +81,5 @@ In order to change the session key, simply look for the `claude_pyrojects.key` f
 This project provides an unofficial API for Claude AI and is not affiliated with or endorsed by Claude AI or Anthropic. Use it at your own risk.
 
 Please refer to the official [Claude AI documentation](https://claude.ai/docs) for more information on how to use Claude AI.
+
+<!-- GitAds-Verify: HVYDUCFSFZ1GH8LZOA2GDGH2987YH2FH -->
