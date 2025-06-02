@@ -82,4 +82,8 @@ This project provides an unofficial API for Claude AI and is not affiliated with
 
 Please refer to the official [Claude AI documentation](https://claude.ai/docs) for more information on how to use Claude AI.
 
+## GitAds Sponsored
+[![Sponsored by GitAds](https://gitads.dev/v1/ad-serve?source=hcevikdotpy/claude-pyrojects@github)](https://gitads.dev/v1/ad-track?source=hcevikdotpy/claude-pyrojects@github)
+
+
 <!-- GitAds-Verify: HVYDUCFSFZ1GH8LZOA2GDGH2987YH2FH -->
