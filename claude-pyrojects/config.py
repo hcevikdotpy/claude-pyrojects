@@ -25,8 +25,9 @@ class ConfigManager:
 
     def initialize_ignore_file(self):
         if not os.path.exists(self.ignore_file):
-            default_content = ('ignore_folders=[".venv", ".idea", ".vscode"]\n'
-                               'ignore_file_extensions=["pdf", "jpg", "png", "pyc"]\n'
+            # Updated to include manifest file in ignore list
+            default_content = ('ignore_folders=[".venv", ".idea", ".vscode", "__pycache__", ".git"]\n'
+                               'ignore_file_extensions=["pdf", "jpg", "png", "pyc", "manifest"]\n'
                                'ignore_name_includes=["claude_pyrojects", ".DS_Store"]')
             with open(self.ignore_file, 'w') as f:
                 f.write(default_content)

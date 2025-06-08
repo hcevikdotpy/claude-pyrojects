@@ -2,7 +2,7 @@ from setuptools import setup, find_packages
 
 setup(
     name='claude-pyrojects',
-    version='0.1.2',
+    version='0.2.0',
     description='A tool for uploading and managing projects in Claude.ai',
     long_description=open('README.md').read(),
     long_description_content_type='text/markdown',
@@ -15,6 +15,7 @@ setup(
         'requests',
         'curl_cffi',
         'tzlocal',
+        'tqdm'
     ],
     entry_points={
         'console_scripts': [
