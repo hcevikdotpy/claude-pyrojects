@@ -98,6 +98,21 @@ class ClaudeAPI:
             headers.update(extra_headers)
         return headers
 
+    def _should_ignore_path(self, relative_path, ignore_relative_paths):
+        """Check if a relative path should be ignored based on subfolder patterns"""
+        if not ignore_relative_paths:
+            return False
+
+        # Normalize path separators to forward slashes for consistent matching
+        normalized_path = relative_path.replace(os.sep, '/')
+
+        for ignored_subfolder in ignore_relative_paths:
+            ignored_normalized = ignored_subfolder.replace(os.sep, '/')
+            # Check if the path starts with the ignored subfolder
+            if normalized_path.startswith(ignored_normalized + '/') or normalized_path == ignored_normalized:
+                return True
+        return False
+
     def create_project(self, organization_id, project_name, is_private=True, description=""):
         url = f"{self.BASE_URL}/organizations/{organization_id}/projects"
         payload = {
@@ -179,16 +194,31 @@ class ClaudeAPI:
         response = self.rate_limit_handler.execute_with_retry(_make_request)
         return response.json()
 
-    def generate_file_structure(self, directory_path, exclude_folders, exclude_extensions, exclude_name_includes):
+    def generate_file_structure(self, directory_path, exclude_folders, exclude_extensions, exclude_name_includes,
+                                exclude_subfolders):
         structure = []
         total_files = 0
 
         # First pass to count files
         for root, dirs, files in os.walk(directory_path):
             dirs[:] = [d for d in dirs if d not in exclude_folders]
+
+            # Get relative path for current directory
+            current_rel_path = os.path.relpath(root, directory_path)
+            if current_rel_path == '.':
+                current_rel_path = ''
+
+            # Skip if current directory is in ignored subfolders
+            if current_rel_path and self._should_ignore_path(current_rel_path, exclude_subfolders):
+                dirs.clear()  # Don't descend into this directory
+                continue
+
             for file in files:
+                file_rel_path = os.path.join(current_rel_path, file) if current_rel_path else file
+
                 if not any(file.endswith(ext) for ext in exclude_extensions) and \
-                        not any(substring in file for substring in exclude_name_includes):
+                        not any(substring in file for substring in exclude_name_includes) and \
+                        not self._should_ignore_path(file_rel_path, exclude_subfolders):
                     total_files += 1
 
         click.echo(click.style(f"\n📊 Generating project structure ({total_files} files)...", fg='cyan'))
@@ -197,23 +227,36 @@ class ClaudeAPI:
         for root, dirs, files in os.walk(directory_path):
             dirs[:] = [d for d in dirs if d not in exclude_folders]
 
+            # Get relative path for current directory
+            current_rel_path = os.path.relpath(root, directory_path)
+            if current_rel_path == '.':
+                current_rel_path = ''
+
+            # Skip if current directory is in ignored subfolders
+            if current_rel_path and self._should_ignore_path(current_rel_path, exclude_subfolders):
+                dirs.clear()  # Don't descend into this directory
+                continue
+
             level = root.replace(directory_path, '').count(os.sep)
             indent = ' ' * 4 * level
             structure.append(f"{indent}{os.path.basename(root)}/")
             subindent = ' ' * 4 * (level + 1)
             for file in files:
+                file_rel_path = os.path.join(current_rel_path, file) if current_rel_path else file
+
                 if not any(file.endswith(ext) for ext in exclude_extensions) and \
-                        not any(substring in file for substring in exclude_name_includes):
+                        not any(substring in file for substring in exclude_name_includes) and \
+                        not self._should_ignore_path(file_rel_path, exclude_subfolders):
                     structure.append(f"{subindent}{file}")
 
         return "\n".join(structure)
 
     def upload_directory_with_structure(self, project_uuid, directory_path, config_manager):
-        ignore_folders, ignore_extensions, ignore_name_includes = config_manager.load_ignore_rules()
+        ignore_folders, ignore_extensions, ignore_name_includes, ignore_relative_paths = config_manager.load_ignore_rules()
 
         # Generate and upload structure file
         structure_content = self.generate_file_structure(directory_path, ignore_folders, ignore_extensions,
-                                                         ignore_name_includes)
+                                                         ignore_name_includes, ignore_relative_paths)
         self.add_file_to_project(project_uuid, "PROJECT_STRUCTURE.txt", structure_content)
         click.echo(click.style("✅ Uploaded PROJECT_STRUCTURE.txt", fg='green'))
 
@@ -223,11 +266,24 @@ class ClaudeAPI:
 
         for root, dirs, files in os.walk(directory_path):
             dirs[:] = [d for d in dirs if d not in ignore_folders]
+
+            # Get relative path for current directory
+            current_rel_path = os.path.relpath(root, directory_path)
+            if current_rel_path == '.':
+                current_rel_path = ''
+
+            # Skip if current directory is in ignored subfolders
+            if current_rel_path and self._should_ignore_path(current_rel_path, ignore_relative_paths):
+                dirs.clear()  # Don't descend into this directory
+                continue
+
             for file in files:
+                file_path = os.path.join(root, file)
+                relative_path = os.path.relpath(file_path, directory_path)
+
                 if not any(file.endswith(ext) for ext in ignore_extensions) and \
-                        not any(substring in file for substring in ignore_name_includes):
-                    file_path = os.path.join(root, file)
-                    relative_path = os.path.relpath(file_path, directory_path)
+                        not any(substring in file for substring in ignore_name_includes) and \
+                        not self._should_ignore_path(relative_path, ignore_relative_paths):
                     files_to_upload.append((file_path, relative_path))
                     total_files += 1
 
@@ -292,7 +348,8 @@ class ClaudeAPI:
         with open(self.manifest_file, 'w') as f:
             json.dump(manifest, f, indent=2)
 
-    def scan_directory_changes(self, directory_path, ignore_folders, ignore_extensions, ignore_name_includes):
+    def scan_directory_changes(self, directory_path, ignore_folders, ignore_extensions, ignore_name_includes,
+                               ignore_relative_paths):
         """Scan directory and detect changes since last sync."""
         manifest = self.load_manifest()
         previous_files = manifest.get('files', {})
@@ -303,15 +360,29 @@ class ClaudeAPI:
             'deleted': []
         }
 
-        # Count total files for progress bar (properly excluding ignored folders)
+        # Count total files for progress bar (properly excluding ignored folders and subfolders)
         total_files = 0
         for root, dirs, files in os.walk(directory_path):
             # Remove ignored directories from dirs list to prevent os.walk from descending into them
             dirs[:] = [d for d in dirs if d not in ignore_folders]
 
+            # Get relative path for current directory
+            current_rel_path = os.path.relpath(root, directory_path)
+            if current_rel_path == '.':
+                current_rel_path = ''
+
+            # Skip if current directory is in ignored subfolders
+            if current_rel_path and self._should_ignore_path(current_rel_path, ignore_relative_paths):
+                dirs.clear()  # Don't descend into this directory
+                continue
+
             for file in files:
+                file_path = os.path.join(root, file)
+                relative_path = os.path.relpath(file_path, directory_path)
+
                 if not any(file.endswith(ext) for ext in ignore_extensions) and \
-                        not any(substring in file for substring in ignore_name_includes):
+                        not any(substring in file for substring in ignore_name_includes) and \
+                        not self._should_ignore_path(relative_path, ignore_relative_paths):
                     total_files += 1
 
         if total_files > 0:
@@ -323,14 +394,26 @@ class ClaudeAPI:
                 for root, dirs, files in os.walk(directory_path):
                     dirs[:] = [d for d in dirs if d not in ignore_folders]
 
+                    # Get relative path for current directory
+                    current_rel_path = os.path.relpath(root, directory_path)
+                    if current_rel_path == '.':
+                        current_rel_path = ''
+
+                    # Skip if current directory is in ignored subfolders
+                    if current_rel_path and self._should_ignore_path(current_rel_path, ignore_relative_paths):
+                        dirs.clear()  # Don't descend into this directory
+                        continue
+
                     for file in files:
+                        file_path = os.path.join(root, file)
+                        relative_path = os.path.relpath(file_path, directory_path)
+
                         if any(file.endswith(ext) for ext in ignore_extensions):
                             continue
                         if any(substring in file for substring in ignore_name_includes):
                             continue
-
-                        file_path = os.path.join(root, file)
-                        relative_path = os.path.relpath(file_path, directory_path)
+                        if self._should_ignore_path(relative_path, ignore_relative_paths):
+                            continue
 
                         pbar.set_description(f"Scanning {relative_path[:40]}...")
 
@@ -371,11 +454,11 @@ class ClaudeAPI:
 
     def incremental_update_project(self, project_uuid, directory_path, config_manager):
         """Perform incremental update of project files."""
-        ignore_folders, ignore_extensions, ignore_name_includes = config_manager.load_ignore_rules()
+        ignore_folders, ignore_extensions, ignore_name_includes, ignore_relative_paths = config_manager.load_ignore_rules()
 
         # Get changes since last sync
         changes, current_files = self.scan_directory_changes(
-            directory_path, ignore_folders, ignore_extensions, ignore_name_includes
+            directory_path, ignore_folders, ignore_extensions, ignore_name_includes, ignore_relative_paths
         )
 
         # Count total changes
@@ -440,7 +523,7 @@ class ClaudeAPI:
         if changes['added'] or changes['deleted']:
             click.echo(click.style("\n📋 Updating PROJECT_STRUCTURE.txt...", fg='cyan'))
             structure_content = self.generate_file_structure(
-                directory_path, ignore_folders, ignore_extensions, ignore_name_includes
+                directory_path, ignore_folders, ignore_extensions, ignore_name_includes, ignore_relative_paths
             )
             self.update_file_in_project(project_uuid, "PROJECT_STRUCTURE.txt", structure_content)
 
@@ -453,9 +536,9 @@ class ClaudeAPI:
 
     def get_status(self, directory_path, config_manager):
         """Get status of changes without uploading."""
-        ignore_folders, ignore_extensions, ignore_name_includes = config_manager.load_ignore_rules()
+        ignore_folders, ignore_extensions, ignore_name_includes, ignore_relative_paths = config_manager.load_ignore_rules()
         changes, _ = self.scan_directory_changes(
-            directory_path, ignore_folders, ignore_extensions, ignore_name_includes
+            directory_path, ignore_folders, ignore_extensions, ignore_name_includes, ignore_relative_paths
         )
         manifest = self.load_manifest()
         return changes, manifest.get('last_sync')

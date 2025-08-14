@@ -30,24 +30,60 @@ def format_file_size(size):
     return f"{size:.1f}TB"
 
 
-def get_directory_stats(directory_path, ignore_folders, ignore_extensions, ignore_name_includes):
+def should_ignore_path(relative_path, ignore_relative_paths):
+    """Check if a relative path should be ignored based on ignore_relative_paths rules"""
+    # Normalize the path for cross-platform compatibility
+    normalized_path = os.path.normpath(relative_path).replace('\\', '/')
+
+    for ignore_path in ignore_relative_paths:
+        # Normalize the ignore path too
+        normalized_ignore = os.path.normpath(ignore_path).replace('\\', '/')
+
+        # Check if the path starts with the ignore pattern
+        if normalized_path.startswith(normalized_ignore):
+            # Make sure it's a complete directory match (not partial)
+            if len(normalized_path) == len(normalized_ignore) or \
+                    normalized_path[len(normalized_ignore)] in ['/', '\\']:
+                return True
+    return False
+
+
+def get_directory_stats(directory_path, ignore_folders, ignore_extensions, ignore_name_includes, ignore_relative_paths):
     """Get statistics about the directory"""
     total_files = 0
     total_size = 0
 
     for root, dirs, files in os.walk(directory_path):
+        # Calculate relative path for this directory
+        rel_root = os.path.relpath(root, directory_path)
+        if rel_root == '.':
+            rel_root = ''
+
+        # Check if this directory should be ignored by relative path
+        if rel_root and should_ignore_path(rel_root, ignore_relative_paths):
+            dirs.clear()  # Don't descend into this directory
+            continue
+
         # Remove ignored directories from dirs list to prevent os.walk from descending into them
         dirs[:] = [d for d in dirs if d not in ignore_folders]
+
+        # Also filter out directories that would be ignored by relative path
+        dirs[:] = [d for d in dirs if not should_ignore_path(
+            os.path.join(rel_root, d) if rel_root else d, ignore_relative_paths)]
 
         for file in files:
             if not any(file.endswith(ext) for ext in ignore_extensions) and \
                     not any(substring in file for substring in ignore_name_includes):
-                total_files += 1
                 file_path = os.path.join(root, file)
-                try:
-                    total_size += os.path.getsize(file_path)
-                except:
-                    pass
+                relative_path = os.path.relpath(file_path, directory_path)
+
+                # Check if file would be ignored by relative path
+                if not should_ignore_path(relative_path, ignore_relative_paths):
+                    total_files += 1
+                    try:
+                        total_size += os.path.getsize(file_path)
+                    except:
+                        pass
 
     return total_files, total_size
 
@@ -115,9 +151,9 @@ def create(ctx, project_name, description):
 
         # Get directory statistics
         directory_path = os.getcwd()
-        ignore_folders, ignore_extensions, ignore_name_includes = config.load_ignore_rules()
+        ignore_folders, ignore_extensions, ignore_name_includes, ignore_relative_paths = config.load_ignore_rules()
         total_files, total_size = get_directory_stats(directory_path, ignore_folders, ignore_extensions,
-                                                      ignore_name_includes)
+                                                      ignore_name_includes, ignore_relative_paths)
 
         if not ctx.obj['QUIET']:
             click.echo(click.style(f"\n📊 Project Statistics:", fg='yellow'))
@@ -145,7 +181,7 @@ def create(ctx, project_name, description):
 
         # Initialize the manifest after first upload
         _, current_files = api.scan_directory_changes(
-            directory_path, ignore_folders, ignore_extensions, ignore_name_includes
+            directory_path, ignore_folders, ignore_extensions, ignore_name_includes, ignore_relative_paths
         )
         manifest = api.load_manifest()
         manifest['files'] = current_files
@@ -198,9 +234,9 @@ def update(ctx, directory_path, force, yes):
                 api.reinitialize_project_files(project_uuid, directory_path, config)
 
                 # Initialize manifest after full upload
-                ignore_folders, ignore_extensions, ignore_name_includes = config.load_ignore_rules()
+                ignore_folders, ignore_extensions, ignore_name_includes, ignore_relative_paths = config.load_ignore_rules()
                 _, current_files = api.scan_directory_changes(
-                    directory_path, ignore_folders, ignore_extensions, ignore_name_includes
+                    directory_path, ignore_folders, ignore_extensions, ignore_name_includes, ignore_relative_paths
                 )
                 manifest = api.load_manifest()
                 manifest['files'] = current_files
@@ -335,11 +371,12 @@ def info(ctx):
         # Check for ignore file
         if os.path.exists('claude_pyrojects.ignore'):
             click.echo(click.style("✅ Ignore file: Found", fg='green'))
-            ignore_folders, ignore_extensions, ignore_name_includes = config.load_ignore_rules()
+            ignore_folders, ignore_extensions, ignore_name_includes, ignore_relative_paths = config.load_ignore_rules()
             if ctx.obj['VERBOSE']:
                 click.echo(f"   Ignored folders: {', '.join(ignore_folders)}")
                 click.echo(f"   Ignored extensions: {', '.join(ignore_extensions)}")
                 click.echo(f"   Ignored names: {', '.join(ignore_name_includes)}")
+                click.echo(f"   Ignored relative paths: {', '.join(ignore_relative_paths)}")
         else:
             click.echo(click.style("❌ Ignore file: Not found", fg='red'))
 

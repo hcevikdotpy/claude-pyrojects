@@ -40,13 +40,45 @@ class FileChangeTracker:
             'size': stat.st_size
         }
 
-    def scan_directory(self, directory_path, ignore_folders, ignore_extensions, ignore_name_includes):
+    def _should_ignore_path(self, relative_path, ignore_relative_paths):
+        """Check if a relative path should be ignored based on ignore_relative_paths rules"""
+        # Normalize the path for cross-platform compatibility
+        normalized_path = os.path.normpath(relative_path).replace('\\', '/')
+
+        for ignore_path in ignore_relative_paths:
+            # Normalize the ignore path too
+            normalized_ignore = os.path.normpath(ignore_path).replace('\\', '/')
+
+            # Check if the path starts with the ignore pattern
+            if normalized_path.startswith(normalized_ignore):
+                # Make sure it's a complete directory match (not partial)
+                if len(normalized_path) == len(normalized_ignore) or \
+                        normalized_path[len(normalized_ignore)] in ['/', '\\']:
+                    return True
+        return False
+
+    def scan_directory(self, directory_path, ignore_folders, ignore_extensions, ignore_name_includes,
+                       ignore_relative_paths=[]):
         """Scan directory and return current file states."""
         current_files = {}
 
         for root, dirs, files in os.walk(directory_path):
+            # Calculate relative path for this directory
+            rel_root = os.path.relpath(root, directory_path)
+            if rel_root == '.':
+                rel_root = ''
+
+            # Check if this directory should be ignored by relative path
+            if rel_root and self._should_ignore_path(rel_root, ignore_relative_paths):
+                dirs.clear()  # Don't descend into this directory
+                continue
+
             # Filter out ignored directories
             dirs[:] = [d for d in dirs if d not in ignore_folders]
+
+            # Also filter out directories that would be ignored by relative path
+            dirs[:] = [d for d in dirs if not self._should_ignore_path(
+                os.path.join(rel_root, d) if rel_root else d, ignore_relative_paths)]
 
             for file in files:
                 # Skip ignored files
@@ -58,6 +90,10 @@ class FileChangeTracker:
                 file_path = os.path.join(root, file)
                 relative_path = os.path.relpath(file_path, directory_path)
 
+                # Check if file would be ignored by relative path
+                if self._should_ignore_path(relative_path, ignore_relative_paths):
+                    continue
+
                 try:
                     current_files[relative_path] = self.get_file_metadata(file_path)
                 except Exception as e:
@@ -65,9 +101,11 @@ class FileChangeTracker:
 
         return current_files
 
-    def get_changes(self, directory_path, ignore_folders, ignore_extensions, ignore_name_includes):
+    def get_changes(self, directory_path, ignore_folders, ignore_extensions, ignore_name_includes,
+                    ignore_relative_paths=[]):
         """Compare current state with manifest and return changes."""
-        current_files = self.scan_directory(directory_path, ignore_folders, ignore_extensions, ignore_name_includes)
+        current_files = self.scan_directory(directory_path, ignore_folders, ignore_extensions, ignore_name_includes,
+                                            ignore_relative_paths)
         previous_files = self.manifest.get('files', {})
 
         changes = {

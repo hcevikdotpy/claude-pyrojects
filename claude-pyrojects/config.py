@@ -25,10 +25,10 @@ class ConfigManager:
 
     def initialize_ignore_file(self):
         if not os.path.exists(self.ignore_file):
-            # Updated to include manifest file in ignore list
             default_content = ('ignore_folders=[".venv", ".idea", ".vscode", "__pycache__", ".git"]\n'
                                'ignore_file_extensions=["pdf", "jpg", "png", "pyc", "manifest"]\n'
-                               'ignore_name_includes=["claude_pyrojects", ".DS_Store"]')
+                               'ignore_name_includes=["claude_pyrojects", ".DS_Store"]\n'
+                               'ignore_relative_paths=["tests/fixtures", "docs/build", "examples/temp"]')
             with open(self.ignore_file, 'w') as f:
                 f.write(default_content)
             print(f"{self.ignore_file} created with default values.")
@@ -43,6 +43,7 @@ class ConfigManager:
                 return (
                     ignore_rules.get("ignore_folders", []),
                     ignore_rules.get("ignore_file_extensions", []),
-                    ignore_rules.get("ignore_name_includes", [])
+                    ignore_rules.get("ignore_name_includes", []),
+                    ignore_rules.get("ignore_relative_paths", [])
                 )
-        return [], [], []
+        return [], [], [], []

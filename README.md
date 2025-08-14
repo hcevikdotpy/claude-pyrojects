@@ -10,7 +10,7 @@ Special thanks to the creators of [ClaudeAPI](https://github.com/KoushikNavuluri
 - **Initialize Project**: Set up your project directory for integration with Claude by creating a `.ignore` file to specify folders and files that should be excluded from the upload.
 - **Create Claude Project**: Automatically create a new project in Claude and upload the entire directory structure and files.
 - **Update Project**: Reinitialize your Claude project by clearing existing files and re-uploading the current state of your project directory.
-- **Flexible Ignoring**: Customize which folders, file types, and specific file names to exclude using the `claude_pyrojects.ignore` file.
+- **Flexible Ignoring**: Customize which folders, file types, specific file names, and relative paths to exclude using the `claude_pyrojects.ignore` file.
 
 ## Prerequisites
 
@@ -56,22 +56,40 @@ python -m claude-pyrojects.cli update
 
 ### Customizing the Ignore File
 
-The claude_pyrojects.ignore file allows you to specify folders, file extensions, and specific filename substrings to exclude from the upload process.
+The claude_pyrojects.ignore file allows you to specify folders, file extensions, specific filename substrings, and relative paths to exclude from the upload process.
 
 Example `claude_pyrojects.ignore`:
 ```plaintext
-ignore_folders=[".venv", ".idea", ".vscode"]
-ignore_file_extensions=["pdf", "jpg", "png", "pyc"]
-ignore_name_includes=["claude_pyrojects"]
+ignore_folders=[".venv", ".idea", ".vscode", "__pycache__", ".git"]
+ignore_file_extensions=["pdf", "jpg", "png", "pyc", "manifest"]
+ignore_name_includes=["claude_pyrojects", ".DS_Store"]
+ignore_relative_paths=["docs/build", "tests/temp", "data/cache"]
 ```
 
-- ignore_folders: List of folders to be ignored.
-- ignore_file_extensions: List of file extensions to be ignored.
-- ignore_name_includes: List of substrings that, if found in a filename, will cause the file to be ignored.
+#### Ignore Options Explained:
+
+- **ignore_folders**: List of folder names to be ignored anywhere in the directory tree.
+- **ignore_file_extensions**: List of file extensions to be ignored (without the dot).
+- **ignore_name_includes**: List of substrings that, if found in a filename, will cause the file to be ignored.
+- **ignore_relative_paths**: List of relative paths (from project root) to be ignored. This allows you to ignore specific subfolders like `"folder/subfolder"` or `"src/tests/fixtures"`.
+
+#### Relative Path Examples:
+
+```plaintext
+ignore_relative_paths=[
+    "docs/build",           # Ignores the build folder inside docs
+    "tests/temp",           # Ignores the temp folder inside tests  
+    "data/cache",           # Ignores the cache folder inside data
+    "frontend/node_modules", # Ignores node_modules in frontend folder
+    "src/generated"         # Ignores the generated folder inside src
+]
+```
+
+**Note**: Relative paths are normalized to work across different operating systems (Windows, macOS, Linux). You can use either forward slashes `/` or backslashes `\` - they will be handled correctly.
 
 ### Changing the Session Key
 
-In order to change the session key, simply look for the `claude_pyrojects.key` file and replace it's contents with your new key
+In order to change the session key, simply look for the `claude_pyrojects.key` file and replace its contents with your new key
 
 ## Planned Features
 - GitHub Integration: A GitHub app that automatically updates the Claude project whenever changes are pushed to the repository.
